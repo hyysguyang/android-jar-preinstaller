@@ -1,1 +1,33 @@
-target/
+# Build
+classes
+target
+target-eclipse
+
+# IDEA
+*.iml
+*.ipr
+*.iws
+.idea
+atlassian-ide-plugin.xml
+
+# Eclipse
+.classpath
+.project
+.settings
+.checkstyle
+.fbprefs
+bin
+
+
+# NetBeans
+nbproject
+
+# Other
+*.log.*
+*.log
+.sonar-ide.properties
+.clover
+proguard_logs
+
+#Android
+gen
