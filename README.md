@@ -6,6 +6,7 @@ avoid deploy and proguard scala library when develop android application with sc
 
 
 Why we need it?
+===============
 
 Proguard and Dex large jar (than 5M) is very slow when develop android application, so preinstall large jar to android
 emulator will make development more productive. Besides, dx will throw expception for large jar, so you have to split
@@ -14,10 +15,13 @@ it's very slowly to proguard scala-library.jar.
 
 
 How build it?
+==============
+
 git clone https://github.com/hyysguyang/android-jar-preinstaller.git
 cd android-jar-preinstaller && mvn install
 
 How to use it?
+==============
 
 You can use it after build it
 
