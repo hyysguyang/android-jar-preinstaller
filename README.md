@@ -18,7 +18,10 @@ git clone https://github.com/hyysguyang/android-jar-preinstaller.git
 cd android-jar-preinstaller && mvn install
 
 How to use it?
-TODO
+
+You can use it after build it
+
+java -jar target/android-jar-preinstaller-1.0-SNAPSHOT-jar-with-dependencies.jar scala-library.jar default-avd
 
 
 

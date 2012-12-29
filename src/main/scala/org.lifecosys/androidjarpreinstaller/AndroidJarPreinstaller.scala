@@ -1,9 +1,12 @@
 package org.lifecosys.androidjarpreinstaller
 
 import java.io.File
-import sys.process.{ProcessLogger, Process}
-import java.util.Date
 import org.apache.commons.io.FileUtils
+import sys.process._
+import org.apache.commons.io.filefilter.{WildcardFileFilter, TrueFileFilter}
+import scala.collection.JavaConverters._
+import java.text.SimpleDateFormat
+import java.util.Date
 
 
 /**
@@ -15,132 +18,153 @@ import org.apache.commons.io.FileUtils
  */
 
 object AndroidJarPreinstaller {
+  val usage = "java -jar android-jar-preinstaller-1.0-SNAPSHOT-jar-with-dependencies.jar <jar-file-path> [android-avd-name]"
+
+
   def main(args: Array[String]) {
-    //"/Develop/DevelopTools/scala-2.9.1.final/lib/scala-library.jar"
-    val jar: File = new File(args(0))
-    require(jar.exists())
-    new AndroidJarPreinstaller().install(jar)
+
+    if (args.length < 1) {
+      println("Please provide the jar to be processed\n" + usage)
+      return
+    }
+
+    require(new File(args(0)).exists(), "Jar not existed.....")
+    val preinstaller = if (args.length > 1)
+      new AndroidJarPreinstaller(avd = args(1))
+    else new AndroidJarPreinstaller
+
+    preinstaller.install(new File(args(0)))
   }
 }
 
-class AndroidJarPreinstaller {
+trait FileLike {
+  def getAbsolutePath: String
 
-  trait FileLike {
-    def getAbsolutePath: String
+  def /(child: String) = new File(getAbsolutePath + File.separator + child) with FileLike
+}
 
-    def /(child: String) = {
-      new File(getAbsolutePath + File.separator + child) with FileLike
-    }
-  }
+class AndroidJarPreinstaller(avd: String = "default", baseDir: File with FileLike = new File("temp") with FileLike) {
+
+  val dummyLogger = ProcessLogger({
+    s =>
+  })
+
+  val androidHome = new File(System.getenv("ANDROID_HOME"))
+  require(androidHome.exists())
 
   def install(jar: File) = {
-    val dexJarList = createDexJar(temp,jar)
+    val dexJarList = createDexJar(jar)
 
-    createRamdisk(temp, dexJarList)
+    createRamdisk(dexJarList)
 
-    Process("emulator @17").run()
-    Process("adb wait-for-device") !
+    Process("emulator @" + avd).run()
+    "adb wait-for-device" !
 
-    Process("adb shell mkdir -p /data/framework/") !
+    "adb shell mkdir -p /data/framework/" !
 
     dexJarList.foreach {
-      file => Process("adb push " + file.getAbsolutePath + " /data/framework/") !
+      file => ("adb push " + file.getAbsolutePath + " /data/framework/") !
     }
 
     println("Push all jar to /data/framework success.....")
-    println("Please close emulator and use below command to start emulator, then all you jar will be available for other application")
-    println("\t\temulator @17 -ramdisk /tmp/scala-dex/ramdisk-dir/ramdisk_new.img")
+    println("Please close emulator and restart emulator, then all you jar will be available for other application")
+    println("\t\temulator @" + avd)
+
+    System.exit(0)
   }
 
 
-  def createDexJar(jar:File) = {
-    val temp = new File("temp") with FileLike
-    temp.mkdir()
-    FileUtils.forceDelete(temp)
-    temp.mkdir()
-    val base = temp / "base"
-    base mkdir()
+  def createDexJar(jar: File) = {
+    baseDir.mkdir()
+    FileUtils.forceDelete(baseDir)
+    baseDir.mkdir()
+    val classes = baseDir / "classes"
+    classes mkdir()
 
-    val splitJar = temp / "scala-split-jar"
+    val splitJar = baseDir / "split-jar"
     splitJar mkdir()
 
-    val dexJar = temp / "scala-dex-jar"
+    val dexJar = baseDir / "dex-jar"
     dexJar mkdir()
 
-    Process("jar -xf "+ jar.getAbsolutePath, base) !
-    //    Process("jar -xf "+System.getenv("SCALA_HOME")+"/lib/scala-library.jar", base) !
-    //    Process("jar -xf "+System.getenv("SCALA_HOME")+"/lib/scala-library.jar", base) !
-    //
-    //
+    Process("jar -xf " + jar.getAbsolutePath, classes) !
 
+    implicit def stringToProcess(command: String) = Process(command, baseDir)
 
-    implicit def stringToProcess(command: String) = Process(command, temp)
-
-    //    val components = Array("collection-immutable", "collection-mutable", "collection-parallel", "collection", "util", "reflect")
-    val components = listFiles(base).map {
-      file => file.getAbsolutePath.stripPrefix(base.getAbsolutePath + "/").replace("/", "-") -> file
+    val components = listFiles(classes).map {
+      file => file.getAbsolutePath.stripPrefix(classes.getAbsolutePath + "/").replace("/", "-") -> file
     }
     components.foreach(println(_))
 
     components.foreach {
       component => {
-        val classDir: String = component._2.getAbsolutePath.stripPrefix(base.getAbsolutePath + "/")
-        "jar cvfm scala-split-jar/%s.jar base/META-INF/MANIFEST.MF -C %s %s".format(component._1, base.getAbsolutePath, classDir) !
+        val classDir: String = component._2.getAbsolutePath.stripPrefix(classes.getAbsolutePath + "/")
+        "jar cvfm split-jar/%s.jar %s/META-INF/MANIFEST.MF -C %s %s".format(component._1, classes.getAbsolutePath, classes.getAbsolutePath, classDir) ! (dummyLogger)
 
         FileUtils.forceDelete(component._2)
       }
     }
 
-    //    "jar cvfm scala-split-jar/" -base.jar base/META-INF/MANIFEST.MF -C base ." !
+    val dx = FileUtils.listFiles(androidHome, new WildcardFileFilter("dx"), TrueFileFilter.INSTANCE).asScala.filter(_.canExecute)
+
+    require(!dx.isEmpty, "Can't locate dx within android home....")
 
     splitJar.listFiles().foreach {
       file =>
-        "dx --dex --output=scala-dex-jar/%s scala-split-jar/%s".format(file.getName, file.getName) !
+        "%s --dex --output=dex-jar/%s split-jar/%s".format(dx.head.getAbsolutePath, file.getName, file.getName) ! (dummyLogger)
     }
-
 
     dexJar.listFiles()
   }
 
-  def createRamdisk(temp: File with FileLike, dexJarList: Array[File]) {
-    val ramdiskDir = temp / "ramdisk-dir"
-    ramdiskDir mkdir()
+  def createRamdisk(dexJarList: Array[File]) {
+    val ramdiskDir = baseDir / "ramdisk-dir"
+    def updateRamdisk(ramdisk: File) {
+      ramdiskDir mkdir()
+      FileUtils.forceDelete(ramdiskDir)
+      ramdiskDir mkdir()
 
-    val ramdiskTemp: File with FileLike = ramdiskDir / "temp"
-    ramdiskTemp mkdir()
+      val ramdiskTemp: File with FileLike = ramdiskDir / "temp"
+      ramdiskTemp mkdir()
 
-    val file: File = new File("/Develop/DevelopTools/android-sdk-linux/system-images/android-17/armeabi-v7a/ramdisk.img") with FileLike
+      val ramdiskBackup = new File(ramdisk.getParentFile.getAbsolutePath + ("/ramdisk.img.original-" + new SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date)))
+      FileUtils.copyFile(ramdisk, ramdiskBackup)
+      println("Backup " + ramdisk.getAbsolutePath + " to " + ramdiskBackup.getAbsolutePath)
+      FileUtils.copyFile(ramdisk, ramdiskDir / "ramdisk.cpio.gz")
 
-    FileUtils.copyFile(file, new File(file.getParentFile.getAbsolutePath + ("/ramdisk.img.bak" + System.currentTimeMillis())))
-    FileUtils.copyFile(file, ramdiskDir / "ramdisk.cpio.gz")
+      Process("gzip -d ramdisk.cpio.gz", ramdiskDir) !
 
-    Process("gzip -d ramdisk.cpio.gz", ramdiskDir) !
+      FileUtils.copyFile(ramdiskDir / "ramdisk.cpio", ramdiskTemp / "ramdisk.cpio")
 
-    FileUtils.copyFile(ramdiskDir / "ramdisk.cpio", ramdiskTemp / "ramdisk.cpio")
+      Process("cpio -i -F ramdisk.cpio", ramdiskTemp) !
 
-    Process("cpio -i -F ramdisk.cpio", ramdiskTemp) !
+      val initRCFile: File with FileLike = ramdiskTemp / "init.rc"
+      FileUtils.readFileToString(initRCFile)
 
-    val initRCFile: File with FileLike = ramdiskTemp / "init.rc"
-    FileUtils.readFileToString(initRCFile)
+      val extraClasspath = ":/data/framework/" + dexJarList.map(_.getName).mkString(":/data/framework/")
 
-    val lines = FileUtils.lineIterator(initRCFile)
+      val finalInitRC = FileUtils.lineIterator(initRCFile).asScala.map {
+        case line if line.trim.startsWith("export BOOTCLASSPATH") && !line.contains(extraClasspath) => line + extraClasspath
 
-    import scala.collection.JavaConverters._
+        case line => line
+      }
 
-    val finalInitRC = lines.asScala.map {
-      case line if line.trim.startsWith("export BOOTCLASSPATH") => line + ":/data/framework/" + dexJarList.map(_.getName).mkString(":/data/framework/")
-      case line => line
+      FileUtils.writeLines(initRCFile, finalInitRC.toList.asJavaCollection)
+
+
+      Process("cpio -i -t -F " + ramdiskDir.getAbsolutePath + "/ramdisk.cpio") #|
+        Process("cpio -o -H newc -O " + ramdiskDir.getAbsolutePath + "/ramdisk_new.img", ramdiskTemp) !
+
+      "gzip " + ramdiskDir.getAbsolutePath + "/ramdisk_new.img" !
+
+      FileUtils.copyFile(new File(ramdiskDir.getAbsolutePath + "/ramdisk_new.img.gz"), ramdisk)
+
+      println("Add jar to BOOTCLASSPATH success for ramdisk " + ramdisk.getAbsolutePath)
     }
 
-    FileUtils.writeLines(initRCFile, finalInitRC.toList.asJavaCollection)
+    val ramdisks = FileUtils.listFiles(androidHome, new WildcardFileFilter("ramdisk.img"), TrueFileFilter.INSTANCE).asScala
 
-
-    Process("cpio -i -t -F " + ramdiskDir.getAbsolutePath + "/ramdisk.cpio") #|
-      Process("cpio -o -H newc -O " + ramdiskDir.getAbsolutePath + "/ramdisk_new.img", ramdiskTemp) !
-
-
-    println("Add jar to BOOTCLASSPATH success, the new ramdisk is:\n"+ramdiskDir.getAbsolutePath + "/ramdisk_new.img")
-    //    FileUtils.copyFile(new File(ramdiskDir.getAbsolutePath + "/ramdisk_new.img"),file)
+    ramdisks foreach updateRamdisk _
   }
 
   def deleteDirectory(dir: File, postfixOfFilePath: String): Unit = dir.listFiles().foreach {
