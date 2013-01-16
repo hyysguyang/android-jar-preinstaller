@@ -1,4 +1,4 @@
-package org.lifecosys.androidjarpreinstaller
+package com.lifecosys.androidjarpreinstaller
 
 import java.io.File
 import org.apache.commons.io.FileUtils
@@ -13,7 +13,7 @@ import java.util.Date
  *
  *
  * @author <a href="mailto:hyysguyang@gamil.com">Young Gu</a>
- * @author <a href="mailto:Young.Gu@lifecosys.com">Young Gu</a>
+ * @author <a href="mailto:Young.Gu@com.lifecosys.com">Young Gu</a>
  * @version 1.0 12/24/12 12:44 AM
  */
 

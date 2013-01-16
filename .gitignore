@@ -23,6 +23,7 @@ bin
 nbproject
 
 # Other
+temp
 *.log.*
 *.log
 .sonar-ide.properties
